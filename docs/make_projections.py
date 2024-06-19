@@ -5,7 +5,7 @@ from typing import List, Dict
 
 from markdown_it import MarkdownIt
 from markdown_it.tree import SyntaxTreeNode
-from mdit_py_plugins import front_matter
+from mdit_py_plugins.front_matter import front_matter_plugin
 
 
 @dataclass
@@ -58,7 +58,7 @@ class WinRTNamespace(WinRTPage):
 
 
 def parse_projections(root_folder: pathlib.Path):
-    md = MarkdownIt().use(front_matter)
+    md = MarkdownIt().use(front_matter_plugin)
     for folder in root_folder.iterdir():
         if folder.is_dir():
             pages = list(folder.glob('*.md'))
