@@ -84,7 +84,7 @@ def parse_projections(root_folder: pathlib.Path):
             # TODO ensure files are ordered so that classes always come before their methods and properties
             ns = WinRTNamespace()
             for page in pages:
-                with page.open(encoding='utf-8') as f:
+                with page.open(encoding='utf-8', errors='ignore') as f:
                     tokens = md.parse(f.read())
                 props = {}
 
@@ -96,8 +96,9 @@ def parse_projections(root_folder: pathlib.Path):
                 # there can be an HTML comment with the element signature before the title
                 if token.type == 'html_block':
                     token = tokens.pop(0)
-                # TODO a handful of files lack h1 headers - how do we treat them?
-                assert token.type == 'heading_open' and token.tag == 'h1', f.name
+                if token.type != 'heading_open' or token.tag != 'h1':
+                    print(f'missing title header on file {f.name} - skipped')
+                    continue
                 token = tokens.pop(0)
                 assert token.type == 'inline', f.name
                 props['name'] = token.content
@@ -108,7 +109,9 @@ def parse_projections(root_folder: pathlib.Path):
                     token = tokens.pop(0)
                     if token.type == 'html_block':  # ...also after the title
                         token = tokens.pop(0)
-                    assert token.type == 'heading_open' and token.tag == 'h2', f.name
+                    if token.type != 'heading_open' or token.tag != 'h2':
+                        print(f'unexpected structure on file {f.name} - skipped')
+                        break
                     token = tokens.pop(0)
                     assert token.type == 'inline', f.name
                     prop = token.content
