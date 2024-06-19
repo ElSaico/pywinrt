@@ -8,6 +8,9 @@ from markdown_it.token import Token
 from mdit_py_plugins.front_matter import front_matter_plugin
 
 RE_API_TYPE = re.compile(r'-api-type: winrt ([a-z]+)')
+RE_ENUM_FIELD = re.compile(r'-field (?P<name>[A-Za-z]+):(?P<value>\d+)')
+RE_STRUCT_FIELD = re.compile(r'-field ([A-Za-z]+)')
+RE_METHOD_PARAM = re.compile(r'-param ([A-Za-z]+)')
 
 
 @dataclass
@@ -29,6 +32,17 @@ class WinRTEnumField:
 @dataclass
 class WinRTEnum(WinRTPage):
     fields: list[WinRTEnumField] = field(default_factory=list)
+
+
+@dataclass
+class WinRTStructField:
+    name: str
+    description: list[Token]
+
+
+@dataclass
+class WinRTStruct(WinRTPage):
+    fields: list[WinRTStructField] = field(default_factory=list)
 
 
 @dataclass
@@ -75,31 +89,69 @@ def parse_projections(root_folder: pathlib.Path):
                 props = {}
 
                 token = tokens.pop(0)
-                assert token.type == 'front_matter', token
+                assert token.type == 'front_matter', f.name
                 doc_type = RE_API_TYPE.search(token.content).group(1)
 
                 token = tokens.pop(0)
                 # there can be an HTML comment with the element signature before the title
                 if token.type == 'html_block':
                     token = tokens.pop(0)
-                assert token.type == 'heading_open' and token.tag == 'h1'
+                # TODO a handful of files lack h1 headers - how do we treat them?
+                assert token.type == 'heading_open' and token.tag == 'h1', f.name
                 token = tokens.pop(0)
-                assert token.type == 'inline'
+                assert token.type == 'inline', f.name
                 props['name'] = token.content
                 token = tokens.pop(0)
-                assert token.type == 'heading_close' and token.tag == 'h1'
+                assert token.type == 'heading_close' and token.tag == 'h1', f.name
 
                 while len(tokens) > 0:
                     token = tokens.pop(0)
-                    assert token.type == 'heading_open' and token.tag == 'h2'
+                    if token.type == 'html_block':  # ...also after the title
+                        token = tokens.pop(0)
+                    assert token.type == 'heading_open' and token.tag == 'h2', f.name
                     token = tokens.pop(0)
-                    assert token.type == 'inline'
+                    assert token.type == 'inline', f.name
                     prop = token.content
                     token = tokens.pop(0)
-                    assert token.type == 'heading_close' and token.tag == 'h2'
+                    assert token.type == 'heading_close' and token.tag == 'h2', f.name
 
-                    # TODO special handling for -enum-fields and -parameters
-                    # TODO set props[prop] as everything preceding the next h2
+                    if prop == '-enum-fields':
+                        props['fields'] = []
+                        while tokens[0].tag == 'heading_open' and tokens[0].tag == 'h3':
+                            tokens.pop(0)
+                            token = tokens.pop(0)
+                            assert token.type == 'inline', f.name
+                            field = RE_ENUM_FIELD.search(token.content).groupdict()
+                            token = tokens.pop(0)
+                            assert token.type == 'heading_close' and token.tag == 'h3', f.name
+                            props['fields'].append(WinRTEnumField(description=tokens[:3], **field))
+                            tokens = tokens[3:]
+                    elif prop == '-struct-fields':
+                        props['fields'] = []
+                        while tokens[0].tag == 'heading_open' and tokens[0].tag == 'h3':
+                            tokens.pop(0)
+                            token = tokens.pop(0)
+                            assert token.type == 'inline', f.name
+                            field_name = RE_STRUCT_FIELD.search(token.content).group(0)
+                            token = tokens.pop(0)
+                            assert token.type == 'heading_close' and token.tag == 'h3', f.name
+                            props['fields'].append(WinRTStructField(name=field_name, description=tokens[:3]))
+                            tokens = tokens[3:]
+                    elif prop == '-parameters':
+                        props['fields'] = []
+                        while tokens[0].tag == 'heading_open' and tokens[0].tag == 'h3':
+                            tokens.pop(0)
+                            token = tokens.pop(0)
+                            assert token.type == 'inline', f.name
+                            field_name = RE_METHOD_PARAM.search(token.content).group(0)
+                            token = tokens.pop(0)
+                            assert token.type == 'heading_close' and token.tag == 'h3', f.name
+                            props['fields'].append(WinRTMethodParameter(name=field_name, description=tokens[:3]))
+                            tokens = tokens[3:]
+                    else:
+                        props[prop[1:]] = []
+                        while len(tokens) > 0 and (tokens[0].tag != 'heading_open' or tokens[0].tag != 'h2'):
+                            props[prop[1:]].append(tokens.pop())
 
                 # TODO create element (or set ns properties) according to doc_type
 
