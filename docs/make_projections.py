@@ -68,7 +68,7 @@ def parse_projections(root_folder: pathlib.Path):
             # TODO ensure files are ordered so that classes always come before their methods and properties
             ns = WinRTNamespace()
             for page in pages:
-                with page.open() as f:
+                with page.open(encoding='utf-8') as f:
                     tokens = md.parse(f.read())
                 tree = SyntaxTreeNode(tokens)
                 # TODO check -api-type and handle accordingly
