@@ -105,56 +105,63 @@ def parse_projections(root_folder: pathlib.Path):
                 token = tokens.pop(0)
                 assert token.type == 'heading_close' and token.tag == 'h1', f.name
 
+                if tokens[0].type == 'html_block':  # ...also after the title
+                    tokens.pop(0)
+                if tokens[0].type == 'paragraph_open':
+                    print(f'found anomaly on {f.name}: possible description outside respective section')
+                    props['description'] = tokens[:3]
+                    tokens = tokens[3:]
+
                 while len(tokens) > 0:
-                    token = tokens.pop(0)
-                    if token.type == 'html_block':  # ...also after the title
+                    try:
                         token = tokens.pop(0)
-                    if token.type != 'heading_open' or token.tag != 'h2':
+                        assert token.type == 'heading_open' and token.tag == 'h2', f.name
+                        token = tokens.pop(0)
+                        assert token.type == 'inline', f.name
+                        prop = token.content
+                        token = tokens.pop(0)
+                        assert token.type == 'heading_close' and token.tag == 'h2', f.name
+
+                        if prop == '-enum-fields':
+                            props['fields'] = []
+                            while tokens[0].tag == 'heading_open' and tokens[0].tag == 'h3':
+                                tokens.pop(0)
+                                token = tokens.pop(0)
+                                assert token.type == 'inline', f.name
+                                field = RE_ENUM_FIELD.search(token.content).groupdict()
+                                token = tokens.pop(0)
+                                assert token.type == 'heading_close' and token.tag == 'h3', f.name
+                                props['fields'].append(WinRTEnumField(description=tokens[:3], **field))
+                                tokens = tokens[3:]
+                        elif prop == '-struct-fields':
+                            props['fields'] = []
+                            while tokens[0].tag == 'heading_open' and tokens[0].tag == 'h3':
+                                tokens.pop(0)
+                                token = tokens.pop(0)
+                                assert token.type == 'inline', f.name
+                                field_name = RE_STRUCT_FIELD.search(token.content).group(0)
+                                token = tokens.pop(0)
+                                assert token.type == 'heading_close' and token.tag == 'h3', f.name
+                                props['fields'].append(WinRTStructField(name=field_name, description=tokens[:3]))
+                                tokens = tokens[3:]
+                        elif prop == '-parameters':
+                            props['fields'] = []
+                            while tokens[0].tag == 'heading_open' and tokens[0].tag == 'h3':
+                                tokens.pop(0)
+                                token = tokens.pop(0)
+                                assert token.type == 'inline', f.name
+                                field_name = RE_METHOD_PARAM.search(token.content).group(0)
+                                token = tokens.pop(0)
+                                assert token.type == 'heading_close' and token.tag == 'h3', f.name
+                                props['fields'].append(WinRTMethodParameter(name=field_name, description=tokens[:3]))
+                                tokens = tokens[3:]
+                        else:
+                            props[prop[1:]] = []
+                            while len(tokens) > 0 and (tokens[0].tag != 'heading_open' or tokens[0].tag != 'h2'):
+                                props[prop[1:]].append(tokens.pop())
+                    except AssertionError:
                         print(f'unexpected structure on file {f.name} - skipped')
                         break
-                    token = tokens.pop(0)
-                    assert token.type == 'inline', f.name
-                    prop = token.content
-                    token = tokens.pop(0)
-                    assert token.type == 'heading_close' and token.tag == 'h2', f.name
-
-                    if prop == '-enum-fields':
-                        props['fields'] = []
-                        while tokens[0].tag == 'heading_open' and tokens[0].tag == 'h3':
-                            tokens.pop(0)
-                            token = tokens.pop(0)
-                            assert token.type == 'inline', f.name
-                            field = RE_ENUM_FIELD.search(token.content).groupdict()
-                            token = tokens.pop(0)
-                            assert token.type == 'heading_close' and token.tag == 'h3', f.name
-                            props['fields'].append(WinRTEnumField(description=tokens[:3], **field))
-                            tokens = tokens[3:]
-                    elif prop == '-struct-fields':
-                        props['fields'] = []
-                        while tokens[0].tag == 'heading_open' and tokens[0].tag == 'h3':
-                            tokens.pop(0)
-                            token = tokens.pop(0)
-                            assert token.type == 'inline', f.name
-                            field_name = RE_STRUCT_FIELD.search(token.content).group(0)
-                            token = tokens.pop(0)
-                            assert token.type == 'heading_close' and token.tag == 'h3', f.name
-                            props['fields'].append(WinRTStructField(name=field_name, description=tokens[:3]))
-                            tokens = tokens[3:]
-                    elif prop == '-parameters':
-                        props['fields'] = []
-                        while tokens[0].tag == 'heading_open' and tokens[0].tag == 'h3':
-                            tokens.pop(0)
-                            token = tokens.pop(0)
-                            assert token.type == 'inline', f.name
-                            field_name = RE_METHOD_PARAM.search(token.content).group(0)
-                            token = tokens.pop(0)
-                            assert token.type == 'heading_close' and token.tag == 'h3', f.name
-                            props['fields'].append(WinRTMethodParameter(name=field_name, description=tokens[:3]))
-                            tokens = tokens[3:]
-                    else:
-                        props[prop[1:]] = []
-                        while len(tokens) > 0 and (tokens[0].tag != 'heading_open' or tokens[0].tag != 'h2'):
-                            props[prop[1:]].append(tokens.pop())
 
                 # TODO create element (or set ns properties) according to doc_type
 
